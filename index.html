@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZIP Code Boundaries</title>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.9.1/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 80%;
+            height: 100vh;
+            border-right: 2px solid #ccc;
+        }
+
+        #info-box {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 280px;
+            background: #ffffff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            padding: 15px;
+            max-height: 90vh;
+            overflow-y: auto;
+            z-index: 1;
+            display: none;
+            font-size: 14px;
+        }
+
+        #info-box h3 {
+            margin-top: 0;
+            font-size: 16px;
+            color: #333;
+        }
+
+        #info-box p {
+            margin: 8px 0;
+            color: #555;
+        }
+
+        .highlight {
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        .pointer {
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="map"></div>
+    <div id="info-box"></div>
+
+    <script>
+        const mapboxAccessToken = 'pk.eyJ1Ijoic2hhaGlkdWxsYWgxOTk2IiwiYSI6ImNtMDBjMGU3cjFteWkyanNkZDB4empkcmcifQ.CophyH7RjoGWwLjmv7r4qw';
+
+        async function getAreaAndStateName(lat, lon) {
+            try {
+                const response = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lon},${lat}.json?access_token=${mapboxAccessToken}`);
+                const data = await response.json();
+
+                let areaName = 'Unknown';
+                let stateName = 'Unknown';
+
+                if (data.features && data.features.length > 0) {
+                    data.features.forEach(feature => {
+                        if (feature.place_type.includes('place') || feature.place_type.includes('locality')) {
+                            areaName = feature.text;
+                        }
+
+                        if (feature.context && Array.isArray(feature.context)) {
+                            feature.context.forEach(contextItem => {
+                                if (contextItem.id.includes('region')) {
+                                    stateName = contextItem.text;
+                                }
+                            });
+                        }
+                    });
+                }
+
+                return { areaName, stateName };
+            } catch (error) {
+                console.error('Error fetching area and state names:', error);
+                return { areaName: 'Error', stateName: 'Error' };
+            }
+        }
+
+        mapboxgl.accessToken = mapboxAccessToken;
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v11',
+            center: [-80.19, 25.77], // Adjust this to the center of your area of interest
+            zoom: 4 // Adjust zoom level
+        });
+
+        map.on('load', async function () {
+            // Fetch the boundary data from the local JSON file
+            const response = await fetch('filtered_boundaries_with_client_ids.json');
+            const boundariesData = await response.json();
+
+            // Add the boundary data to the map
+            map.addSource('zip-boundaries', {
+                type: 'geojson',
+                data: boundariesData
+            });
+
+            // Add a fill layer for the boundaries
+            map.addLayer({
+                id: 'zip-boundaries-fill',
+                type: 'fill',
+                source: 'zip-boundaries',
+                paint: {
+                    'fill-color': 'rgba(255, 0, 0, 0.1)',
+                    'fill-outline-color': 'rgba(255, 0, 0, 0.5)',
+                }
+            });
+
+            // Add a line layer for the boundaries
+            map.addLayer({
+                id: 'zip-boundaries-line',
+                type: 'line',
+                source: 'zip-boundaries',
+                paint: {
+                    'line-color': '#ff0000',
+                    'line-width': 1
+                }
+            });
+
+            // Fit the map to the bounds of the loaded data
+            const bounds = new mapboxgl.LngLatBounds();
+            boundariesData.features.forEach(feature => {
+                if (feature.geometry && feature.geometry.coordinates) {
+                    feature.geometry.coordinates.forEach(coord => {
+                        if (Array.isArray(coord[0])) {
+                            coord.forEach(c => {
+                                if (Array.isArray(c) && c.length === 2 && !isNaN(c[0]) && !isNaN(c[1])) {
+                                    bounds.extend(c);
+                                }
+                            });
+                        } else {
+                            if (Array.isArray(coord) && coord.length === 2 && !isNaN(coord[0]) && !isNaN(coord[1])) {
+                                bounds.extend(coord);
+                            }
+                        }
+                    });
+                }
+            });
+            map.fitBounds(bounds, { padding: 20 });
+
+            // Show information on boundary click
+            map.on('click', 'zip-boundaries-fill', async (e) => {
+                const feature = e.features[0];
+                const props = feature.properties;
+
+                const { areaName, stateName } = await getAreaAndStateName(props.INTPTLAT10, props.INTPTLON10);
+
+                const infoBox = document.getElementById('info-box');
+                infoBox.innerHTML = `
+                    <h3>ZIP Code: <span class="highlight">${props.ZCTA5CE10}</span></h3>
+                    <p><strong>Client ID:</strong> ${props.clientId}</p>
+                    <p><strong>Area Name:</strong> ${areaName || 'N/A'}</p>
+                    <p><strong>State:</strong> ${stateName || 'N/A'}</p>
+                    <p><strong>Land Area:</strong> ${props.ALAND10 || 'N/A'} sq meters</p>
+                    <p><strong>Water Area:</strong> ${props.AWATER10 || 'N/A'} sq meters</p>
+                `;
+                infoBox.style.display = 'block';
+            });
+
+            map.on('mouseenter', 'zip-boundaries-fill', () => {
+                map.getCanvas().style.cursor = 'pointer';
+            });
+            map.on('mouseleave', 'zip-boundaries-fill', () => {
+                map.getCanvas().style.cursor = '';
+            });
+        });
+    </script>
+</body>
+
+</html>
