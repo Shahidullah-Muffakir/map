@@ -141,7 +141,7 @@
 
         map.on('load', async function () {
             // Fetch the boundary data from the local JSON file
-            const response = await fetch('boundaries.json');
+            const response = await fetch('filtered_boundaries_with_client_ids.json');
             const boundariesData = await response.json();
             console.log('boundariesData123', boundariesData)
             // Modify the data preparation to format client IDs
