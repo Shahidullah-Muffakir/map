@@ -100,6 +100,36 @@
                 return { areaName: 'Error', stateName: 'Error' };
             }
         }
+        // Add this function to format the label text
+        function formatLabelText(zipCode, clientIds) {
+            const clientIdList = clientIds.split(',').map(id => id.trim()).join('\n');
+            return `ZIP: ${zipCode}\n\nClients:\n${clientIdList}`;
+        }
+
+
+        function calculateColor(clientCount) {
+            // Define a base color (lighter) and a more intense color for more clients
+            const baseColor = [255, 220, 220]; // Even lighter red
+            const intenseColor = [255, 0, 0]; // Red
+
+            // Adjust the intensity calculation to be more pronounced for lower counts
+            let intensity;
+            if (clientCount === 1) {
+                intensity = 0;
+            } else {
+                intensity = clientCount / 10 + 0.3;
+
+            }
+
+            // Interpolate color based on intensity
+            const r = Math.round(baseColor[0] * (1 - intensity) + intenseColor[0] * intensity);
+            const g = Math.round(baseColor[1] * (1 - intensity) + intenseColor[1] * intensity);
+            const b = Math.round(baseColor[2] * (1 - intensity) + intenseColor[2] * intensity);
+
+            return `rgba(${r}, ${g}, ${b}, 0.6)`;
+        }
+
+
 
         mapboxgl.accessToken = mapboxAccessToken;
         const map = new mapboxgl.Map({
@@ -111,22 +141,29 @@
 
         map.on('load', async function () {
             // Fetch the boundary data from the local JSON file
-            const response = await fetch('filtered_boundaries_with_client_ids.json');
+            const response = await fetch('boundaries.json');
             const boundariesData = await response.json();
-
+            console.log('boundariesData123', boundariesData)
+            // Modify the data preparation to format client IDs
+            boundariesData.features.forEach(feature => {
+                const clientIDs = feature.properties.clientId.split(',');
+                feature.properties.clientCount = clientIDs.length;
+                feature.properties.color = calculateColor(clientIDs.length);
+                feature.properties.clientId = clientIDs.map(id => id.trim()).join('\n');
+            });
             // Add the boundary data to the map
             map.addSource('zip-boundaries', {
                 type: 'geojson',
                 data: boundariesData
             });
 
-            // Add a fill layer for the boundaries
+            // Add a fill layer for the boundaries with dynamic color based on client count
             map.addLayer({
                 id: 'zip-boundaries-fill',
                 type: 'fill',
                 source: 'zip-boundaries',
                 paint: {
-                    'fill-color': 'rgba(255, 0, 0, 0.1)',
+                    'fill-color': ['get', 'color'], // Use the dynamically calculated color
                     'fill-outline-color': 'rgba(255, 0, 0, 0.5)',
                 }
             });
@@ -139,6 +176,33 @@
                 paint: {
                     'line-color': '#ff0000',
                     'line-width': 1
+                }
+            });
+            map.addLayer({
+                id: 'zip-labels',
+                type: 'symbol',
+                source: 'zip-boundaries',
+                layout: {
+                    'text-field': ['format',
+                        'ZIP: ', { 'font-scale': 0.8, 'font-weight': 'bold' },
+                        ['get', 'ZCTA5CE10'], { 'font-scale': 1.2, 'font-weight': 'bold' },
+                        '\n\n', {},
+                        'Clients:', { 'font-scale': 0.8, 'font-weight': 'bold' },
+                        '\n', {},
+                        ['get', 'clientId'], { 'font-scale': 0.9, 'text-transform': 'uppercase' }
+                    ],
+                    'text-size': 12,
+                    'text-anchor': 'center',
+                    'text-allow-overlap': false,
+                    'text-ignore-placement': false,
+                    'text-max-width': 8,
+                    'text-line-height': 1.2
+                },
+                paint: {
+                    'text-color': '#000000',
+                    'text-halo-color': '#ffffff',
+                    'text-halo-width': 2,
+                    'text-opacity': 0.9
                 }
             });
 
@@ -170,10 +234,12 @@
 
                 const { areaName, stateName } = await getAreaAndStateName(props.INTPTLAT10, props.INTPTLON10);
 
+                const clientIDs = props.clientId.split(',');
+
                 const infoBox = document.getElementById('info-box');
                 infoBox.innerHTML = `
                     <h3>ZIP Code: <span class="highlight">${props.ZCTA5CE10}</span></h3>
-                    <p><strong>Client ID:</strong> ${props.clientId}</p>
+                    <p><strong>Client IDs:</strong> ${clientIDs.join(', ')}</p>
                     <p><strong>Area Name:</strong> ${areaName || 'N/A'}</p>
                     <p><strong>State:</strong> ${stateName || 'N/A'}</p>
                     <p><strong>Land Area:</strong> ${props.ALAND10 || 'N/A'} sq meters</p>
