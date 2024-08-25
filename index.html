@@ -100,11 +100,7 @@
                 return { areaName: 'Error', stateName: 'Error' };
             }
         }
-        // Add this function to format the label text
-        function formatLabelText(zipCode, clientIds) {
-            const clientIdList = clientIds.split(',').map(id => id.trim()).join('\n');
-            return `ZIP: ${zipCode}\n\nClients:\n${clientIdList}`;
-        }
+    
 
 
         function calculateColor(clientCount) {
@@ -178,33 +174,7 @@
                     'line-width': 1
                 }
             });
-            map.addLayer({
-                id: 'zip-labels',
-                type: 'symbol',
-                source: 'zip-boundaries',
-                layout: {
-                    'text-field': ['format',
-                        'ZIP: ', { 'font-scale': 0.8, 'font-weight': 'bold' },
-                        ['get', 'ZCTA5CE10'], { 'font-scale': 1.2, 'font-weight': 'bold' },
-                        '\n\n', {},
-                        'Clients:', { 'font-scale': 0.8, 'font-weight': 'bold' },
-                        '\n', {},
-                        ['get', 'clientId'], { 'font-scale': 0.9, 'text-transform': 'uppercase' }
-                    ],
-                    'text-size': 12,
-                    'text-anchor': 'center',
-                    'text-allow-overlap': false,
-                    'text-ignore-placement': false,
-                    'text-max-width': 8,
-                    'text-line-height': 1.2
-                },
-                paint: {
-                    'text-color': '#000000',
-                    'text-halo-color': '#ffffff',
-                    'text-halo-width': 2,
-                    'text-opacity': 0.9
-                }
-            });
+           
 
             // Fit the map to the bounds of the loaded data
             const bounds = new mapboxgl.LngLatBounds();
